@@ -21,7 +21,7 @@
         s.ratingCoins = (s.ratingCoins||0) + rating;
         localStorage.setItem('ef_state_v1', JSON.stringify(s));
         app.save();
-        this.showModal('🎉 Награда!', `+${coins} монет магазина\n+${rating} рейтинг очков`);
+        this.showModal('🎉 Награда!', `+${coins} монет ��агазина\n+${rating} рейтинг очков`);
       } catch(e) { console.warn('award failed', e) }
     },
 
@@ -507,11 +507,23 @@
       controls.style.display = 'flex';
       controls.style.gap = '10px';
       controls.style.marginBottom = '15px';
+      controls.style.flexWrap = 'wrap';
 
       const btnNew = document.createElement('button');
       btnNew.className = 'buy-btn';
       btnNew.textContent = 'Новая игра';
       controls.appendChild(btnNew);
+
+      const difficultyBtn = document.createElement('button');
+      difficultyBtn.className = 'shop-tab';
+      difficultyBtn.textContent = 'Легко';
+      controls.appendChild(difficultyBtn);
+
+      const statsDiv = document.createElement('div');
+      statsDiv.style.fontSize = '12px';
+      statsDiv.style.color = '#666';
+      statsDiv.textContent = 'Уровень: Легко';
+      controls.appendChild(statsDiv);
 
       const infoDiv = document.createElement('div');
       infoDiv.style.fontSize = '12px';
@@ -538,6 +550,8 @@
       body.appendChild(board);
 
       let gameState = initializeChess();
+      let difficulty = 'easy';
+      let waitingForAI = false;
 
       function initializeChess() {
         return {
@@ -553,8 +567,195 @@
           ],
           selectedRow: null,
           selectedCol: null,
-          moves: 0
+          moves: 0,
+          isPlayerTurn: true,
+          gameOver: false
         };
+      }
+
+      const pieceValues = {
+        '♙': 1, '♘': 3, '♗': 3, '♖': 5, '♕': 9, '♔': 1000,
+        '♟': 1, '♞': 3, '♝': 3, '♜': 5, '♛': 9, '♚': 1000
+      };
+
+      const isPlayerPiece = (piece) => piece && '♔♕♖♗♘♙'.includes(piece);
+      const isAIPiece = (piece) => piece && '♚♛♜♝♞♟'.includes(piece);
+
+      function getValidMoves(row, col) {
+        const moves = [];
+        const piece = gameState.board[row][col];
+        if (!piece) return moves;
+
+        const isPlayer = isPlayerPiece(piece);
+        const p = piece.toLowerCase();
+
+        if (p === '♚' || p === '♔') {
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const nr = row + dr, nc = col + dc;
+              if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                const target = gameState.board[nr][nc];
+                if (!target || (isPlayer ? isAIPiece(target) : isPlayerPiece(target))) {
+                  moves.push([nr, nc]);
+                }
+              }
+            }
+          }
+        } else if (p === '♟' || p === '♙') {
+          const direction = isPlayer ? -1 : 1;
+          const startRow = isPlayer ? 6 : 1;
+          const nr = row + direction;
+          if (nr >= 0 && nr < 8 && !gameState.board[nr][col]) {
+            moves.push([nr, col]);
+            if (row === startRow && !gameState.board[row + 2*direction][col]) {
+              moves.push([row + 2*direction, col]);
+            }
+          }
+          for (let dc of [-1, 1]) {
+            const nc = col + dc;
+            if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+              const target = gameState.board[nr][nc];
+              if (target && (isPlayer ? isAIPiece(target) : isPlayerPiece(target))) {
+                moves.push([nr, nc]);
+              }
+            }
+          }
+        } else {
+          const dirs = p === '♘' || p === '♞' ? 
+            [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]] :
+            [[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+          
+          for (let [dr, dc] of dirs) {
+            let nr = row + dr, nc = col + dc;
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+              const target = gameState.board[nr][nc];
+              if (!target) {
+                moves.push([nr, nc]);
+              } else if (isPlayer ? isAIPiece(target) : isPlayerPiece(target)) {
+                moves.push([nr, nc]);
+                break;
+              } else {
+                break;
+              }
+              if (p === '♘' || p === '♞') break;
+              nr += dr;
+              nc += dc;
+            }
+          }
+        }
+
+        return moves;
+      }
+
+      function evaluatePosition() {
+        let score = 0;
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const piece = gameState.board[r][c];
+            if (piece) {
+              const value = pieceValues[piece] || 0;
+              score += isPlayerPiece(piece) ? value : -value;
+            }
+          }
+        }
+        return score;
+      }
+
+      function minimax(depth, isMaximizing, alpha, beta) {
+        if (depth === 0) {
+          return evaluatePosition();
+        }
+
+        let moves = [];
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            if (isMaximizing ? isAIPiece(gameState.board[r][c]) : isPlayerPiece(gameState.board[r][c])) {
+              const pieceMoves = getValidMoves(r, c);
+              for (let [nr, nc] of pieceMoves) {
+                moves.push([r, c, nr, nc]);
+              }
+            }
+          }
+        }
+
+        if (moves.length === 0) return isMaximizing ? -Infinity : Infinity;
+
+        if (isMaximizing) {
+          let maxEval = -Infinity;
+          for (let [r, c, nr, nc] of moves) {
+            const captured = gameState.board[nr][nc];
+            gameState.board[nr][nc] = gameState.board[r][c];
+            gameState.board[r][c] = null;
+            const eval_ = minimax(depth - 1, false, alpha, beta);
+            gameState.board[r][c] = gameState.board[nr][nc];
+            gameState.board[nr][nc] = captured;
+            maxEval = Math.max(maxEval, eval_);
+            alpha = Math.max(alpha, eval_);
+            if (beta <= alpha) break;
+          }
+          return maxEval;
+        } else {
+          let minEval = Infinity;
+          for (let [r, c, nr, nc] of moves) {
+            const captured = gameState.board[nr][nc];
+            gameState.board[nr][nc] = gameState.board[r][c];
+            gameState.board[r][c] = null;
+            const eval_ = minimax(depth - 1, true, alpha, beta);
+            gameState.board[r][c] = gameState.board[nr][nc];
+            gameState.board[nr][nc] = captured;
+            minEval = Math.min(minEval, eval_);
+            beta = Math.min(beta, eval_);
+            if (beta <= alpha) break;
+          }
+          return minEval;
+        }
+      }
+
+      function getAIMove() {
+        let moves = [];
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            if (isAIPiece(gameState.board[r][c])) {
+              const pieceMoves = getValidMoves(r, c);
+              for (let [nr, nc] of pieceMoves) {
+                moves.push([r, c, nr, nc]);
+              }
+            }
+          }
+        }
+
+        if (moves.length === 0) {
+          gameState.gameOver = true;
+          resultDiv.innerHTML = '<strong style="color: green;">🎉 Вы выиграли! Королю мат!</strong>';
+          gameEngine.award(15, 12);
+          return null;
+        }
+
+        if (difficulty === 'easy') {
+          return moves[Math.floor(Math.random() * moves.length)];
+        }
+
+        let bestScore = -Infinity;
+        let bestMoves = [];
+
+        for (let [r, c, nr, nc] of moves) {
+          const captured = gameState.board[nr][nc];
+          gameState.board[nr][nc] = gameState.board[r][c];
+          gameState.board[r][c] = null;
+          const score = minimax(difficulty === 'medium' ? 2 : 3, false, -Infinity, Infinity);
+          gameState.board[r][c] = gameState.board[nr][nc];
+          gameState.board[nr][nc] = captured;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMoves = [[r, c, nr, nc]];
+          } else if (score === bestScore) {
+            bestMoves.push([r, c, nr, nc]);
+          }
+        }
+
+        return bestMoves[Math.floor(Math.random() * bestMoves.length)];
       }
 
       function renderBoard() {
@@ -578,17 +779,19 @@
               cell.style.boxShadow = 'inset 0 0 10px rgba(186, 202, 68, 0.5)';
             }
 
-            cell.onmouseover = () => { cell.style.opacity = '0.8'; };
+            cell.onmouseover = () => { if (!waitingForAI) cell.style.opacity = '0.8'; };
             cell.onmouseout = () => { cell.style.opacity = '1'; };
-            cell.onclick = () => moveChess(row, col);
+            cell.onclick = () => !waitingForAI && moveChess(row, col);
             board.appendChild(cell);
           }
         }
       }
 
       function moveChess(row, col) {
+        if (waitingForAI || !gameState.isPlayerTurn || gameState.gameOver) return;
+
         if (gameState.selectedRow === null) {
-          if (gameState.board[row][col]) {
+          if (isPlayerPiece(gameState.board[row][col])) {
             gameState.selectedRow = row;
             gameState.selectedCol = col;
           }
@@ -597,15 +800,42 @@
             gameState.selectedRow = null;
             gameState.selectedCol = null;
           } else {
-            gameState.board[row][col] = gameState.board[gameState.selectedRow][gameState.selectedCol];
-            gameState.board[gameState.selectedRow][gameState.selectedCol] = null;
-            gameState.selectedRow = null;
-            gameState.selectedCol = null;
-            gameState.moves++;
-            if (gameState.moves >= 10) {
-              resultDiv.innerHTML = '<strong style="color: green;">🎉 Хорошо сыграли! +5 монет</strong>';
-              gameEngine.award(5, 4);
-              gameState.moves = 0;
+            const moves = getValidMoves(gameState.selectedRow, gameState.selectedCol);
+            const isValidMove = moves.some(m => m[0] === row && m[1] === col);
+
+            if (isValidMove) {
+              gameState.board[row][col] = gameState.board[gameState.selectedRow][gameState.selectedCol];
+              gameState.board[gameState.selectedRow][gameState.selectedCol] = null;
+              gameState.selectedRow = null;
+              gameState.selectedCol = null;
+              gameState.moves++;
+              gameState.isPlayerTurn = false;
+
+              waitingForAI = true;
+              setTimeout(() => {
+                const move = getAIMove();
+                if (move) {
+                  const [r, c, nr, nc] = move;
+                  gameState.board[nr][nc] = gameState.board[r][c];
+                  gameState.board[r][c] = null;
+
+                  const playerAlive = false;
+                  for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                      if (gameState.board[i][j] === '♔') return;
+                    }
+                  }
+                  
+                  gameState.gameOver = true;
+                  resultDiv.innerHTML = '<strong style="color: red;">💔 Вы проиграли! Ваш король в мате!</strong>';
+                }
+                gameState.isPlayerTurn = true;
+                waitingForAI = false;
+                renderBoard();
+              }, 500);
+            } else {
+              gameState.selectedRow = null;
+              gameState.selectedCol = null;
             }
           }
         }
@@ -615,6 +845,27 @@
       btnNew.onclick = () => {
         gameState = initializeChess();
         resultDiv.innerHTML = '';
+        waitingForAI = false;
+        renderBoard();
+      };
+
+      difficultyBtn.onclick = () => {
+        if (difficulty === 'easy') {
+          difficulty = 'medium';
+          difficultyBtn.textContent = 'Средне';
+          statsDiv.textContent = 'Уровень: Средне';
+        } else if (difficulty === 'medium') {
+          difficulty = 'hard';
+          difficultyBtn.textContent = 'Сложно';
+          statsDiv.textContent = 'Уровень: Сложно';
+        } else {
+          difficulty = 'easy';
+          difficultyBtn.textContent = 'Легко';
+          statsDiv.textContent = 'Уровень: Легко';
+        }
+        gameState = initializeChess();
+        resultDiv.innerHTML = '';
+        waitingForAI = false;
         renderBoard();
       };
 
@@ -636,16 +887,28 @@
       controls.style.display = 'flex';
       controls.style.gap = '10px';
       controls.style.marginBottom = '15px';
+      controls.style.flexWrap = 'wrap';
 
       const btnNew = document.createElement('button');
       btnNew.className = 'buy-btn';
       btnNew.textContent = 'Новая игра';
       controls.appendChild(btnNew);
 
+      const difficultyBtn = document.createElement('button');
+      difficultyBtn.className = 'shop-tab';
+      difficultyBtn.textContent = 'Легко';
+      controls.appendChild(difficultyBtn);
+
+      const statsDiv = document.createElement('div');
+      statsDiv.style.fontSize = '12px';
+      statsDiv.style.color = '#666';
+      statsDiv.textContent = 'Уровень: Легко';
+      controls.appendChild(statsDiv);
+
       const infoDiv = document.createElement('div');
       infoDiv.style.fontSize = '12px';
       infoDiv.style.color = '#666';
-      infoDiv.textContent = 'Кликните на шашку, потом на клетку (по диагонали или на 2 клетки)';
+      infoDiv.textContent = 'Кликните на шашку, потом на клетку (по диагонали или на 2 клетки для взятия)';
       controls.appendChild(infoDiv);
 
       const resultDiv = document.createElement('div');
@@ -667,6 +930,8 @@
       body.appendChild(board);
 
       let gameState = initializeCheckers();
+      let difficulty = 'easy';
+      let waitingForAI = false;
 
       function initializeCheckers() {
         const b = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -680,7 +945,205 @@
             if ((r + c) % 2 === 1) b[r][c] = '⚪';
           }
         }
-        return { board: b, selectedRow: null, selectedCol: null, moves: 0 };
+        return { 
+          board: b, 
+          selectedRow: null, 
+          selectedCol: null, 
+          moves: 0,
+          isPlayerTurn: true,
+          gameOver: false,
+          playerDames: {},
+          aiDames: {}
+        };
+      }
+
+      function isPlayerPiece(piece) {
+        return piece === '⚪' || (gameState.playerDames && gameState.playerDames[piece]);
+      }
+
+      function isAIPiece(piece) {
+        return piece === '⚫' || (gameState.aiDames && gameState.aiDames[piece]);
+      }
+
+      function getValidMoves(row, col) {
+        const moves = [];
+        const piece = gameState.board[row][col];
+        if (!piece) return moves;
+
+        const isDame = piece.includes('♕');
+        const isPlayer = isPlayerPiece(piece);
+
+        const directions = isDame ? 
+          [[1,1],[1,-1],[-1,1],[-1,-1]] : 
+          isPlayer ? [[1,1],[1,-1]] : [[-1,1],[-1,-1]];
+
+        for (let [dr, dc] of directions) {
+          const nr = row + dr, nc = col + dc;
+          if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+            if (!gameState.board[nr][nc]) {
+              moves.push([nr, nc, false]);
+            }
+            const nr2 = nr + dr, nc2 = nc + dc;
+            if (nr2 >= 0 && nr2 < 8 && nc2 >= 0 && nc2 < 8 && 
+                gameState.board[nr][nc] && 
+                (isPlayer ? isAIPiece(gameState.board[nr][nc]) : isPlayerPiece(gameState.board[nr][nc])) &&
+                !gameState.board[nr2][nc2]) {
+              moves.push([nr2, nc2, true]);
+            }
+          }
+
+          if (isDame) {
+            let nr = row + dr * 2, nc = col + dc * 2;
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+              if (!gameState.board[nr][nc]) {
+                moves.push([nr, nc, false]);
+              } else if ((isPlayer ? isAIPiece(gameState.board[nr][nc]) : isPlayerPiece(gameState.board[nr][nc]))) {
+                if (nr + dr >= 0 && nr + dr < 8 && nc + dc >= 0 && nc + dc < 8 && !gameState.board[nr + dr][nc + dc]) {
+                  moves.push([nr + dr, nc + dc, true]);
+                }
+                break;
+              } else {
+                break;
+              }
+              nr += dr;
+              nc += dc;
+            }
+          }
+        }
+
+        return moves;
+      }
+
+      function evaluatePosition() {
+        let score = 0;
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const piece = gameState.board[r][c];
+            if (piece) {
+              const isPlayer = isPlayerPiece(piece);
+              const isDame = piece.includes('♕');
+              const value = isDame ? 5 : 1;
+              const advancement = isPlayer ? r : (7 - r);
+              score += isPlayer ? (value + advancement * 0.1) : -(value + advancement * 0.1);
+            }
+          }
+        }
+        return score;
+      }
+
+      function minimax(depth, isMaximizing, alpha, beta) {
+        if (depth === 0) {
+          return evaluatePosition();
+        }
+
+        let moves = [];
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            if (isMaximizing ? isAIPiece(gameState.board[r][c]) : isPlayerPiece(gameState.board[r][c])) {
+              const pieceMoves = getValidMoves(r, c);
+              for (let [nr, nc, isCapture] of pieceMoves) {
+                moves.push([r, c, nr, nc, isCapture]);
+              }
+            }
+          }
+        }
+
+        if (moves.length === 0) return isMaximizing ? -Infinity : Infinity;
+
+        if (isMaximizing) {
+          let maxEval = -Infinity;
+          for (let [r, c, nr, nc, isCapture] of moves) {
+            const captured = gameState.board[nr][nc];
+            const capturedPiece = isCapture ? gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] : null;
+            gameState.board[nr][nc] = gameState.board[r][c];
+            gameState.board[r][c] = null;
+            if (isCapture) gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] = null;
+
+            const eval_ = minimax(depth - 1, false, alpha, beta);
+            gameState.board[r][c] = gameState.board[nr][nc];
+            gameState.board[nr][nc] = captured;
+            if (isCapture) gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] = capturedPiece;
+
+            maxEval = Math.max(maxEval, eval_);
+            alpha = Math.max(alpha, eval_);
+            if (beta <= alpha) break;
+          }
+          return maxEval;
+        } else {
+          let minEval = Infinity;
+          for (let [r, c, nr, nc, isCapture] of moves) {
+            const captured = gameState.board[nr][nc];
+            const capturedPiece = isCapture ? gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] : null;
+            gameState.board[nr][nc] = gameState.board[r][c];
+            gameState.board[r][c] = null;
+            if (isCapture) gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] = null;
+
+            const eval_ = minimax(depth - 1, true, alpha, beta);
+            gameState.board[r][c] = gameState.board[nr][nc];
+            gameState.board[nr][nc] = captured;
+            if (isCapture) gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] = capturedPiece;
+
+            minEval = Math.min(minEval, eval_);
+            beta = Math.min(beta, eval_);
+            if (beta <= alpha) break;
+          }
+          return minEval;
+        }
+      }
+
+      function getAIMove() {
+        let moves = [];
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            if (isAIPiece(gameState.board[r][c])) {
+              const pieceMoves = getValidMoves(r, c);
+              for (let [nr, nc, isCapture] of pieceMoves) {
+                moves.push([r, c, nr, nc, isCapture]);
+              }
+            }
+          }
+        }
+
+        if (moves.length === 0) {
+          gameState.gameOver = true;
+          resultDiv.innerHTML = '<strong style="color: green;">🎉 Вы выиграли!</strong>';
+          gameEngine.award(20, 15);
+          return null;
+        }
+
+        if (difficulty === 'easy') {
+          return moves[Math.floor(Math.random() * moves.length)];
+        }
+
+        const captureMoves = moves.filter(m => m[4]);
+        const priorityMoves = captureMoves.length > 0 ? captureMoves : moves;
+
+        let bestScore = -Infinity;
+        let bestMoves = [];
+
+        for (let [r, c, nr, nc, isCapture] of priorityMoves) {
+          const captured = gameState.board[nr][nc];
+          const capturedPiece = isCapture ? gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] : null;
+          gameState.board[nr][nc] = gameState.board[r][c];
+          gameState.board[r][c] = null;
+          if (isCapture) gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] = null;
+
+          const depth = difficulty === 'medium' ? 3 : 5;
+          const score = minimax(depth, false, -Infinity, Infinity);
+
+          gameState.board[r][c] = gameState.board[nr][nc];
+          gameState.board[nr][nc] = captured;
+          if (isCapture) gameState.board[Math.floor((r+nr)/2)][Math.floor((c+nc)/2)] = capturedPiece;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMoves = [[r, c, nr, nc, isCapture]];
+          } else if (score === bestScore) {
+            bestMoves.push([r, c, nr, nc, isCapture]);
+          }
+        }
+
+        return bestMoves[Math.floor(Math.random() * bestMoves.length)];
       }
 
       function renderBoard() {
@@ -704,37 +1167,79 @@
               cell.style.boxShadow = 'inset 0 0 10px rgba(255, 215, 0, 0.5)';
             }
 
-            cell.onmouseover = () => { cell.style.opacity = '0.8'; };
+            cell.onmouseover = () => { if (!waitingForAI) cell.style.opacity = '0.8'; };
             cell.onmouseout = () => { cell.style.opacity = '1'; };
-            cell.onclick = () => moveCheckers(row, col);
+            cell.onclick = () => !waitingForAI && moveCheckers(row, col);
             board.appendChild(cell);
           }
         }
       }
 
       function moveCheckers(row, col) {
+        if (waitingForAI || !gameState.isPlayerTurn || gameState.gameOver) return;
+
         if (gameState.selectedRow === null) {
-          if (gameState.board[row][col]) {
+          if (isPlayerPiece(gameState.board[row][col])) {
             gameState.selectedRow = row;
             gameState.selectedCol = col;
           }
         } else {
-          const dRow = Math.abs(row - gameState.selectedRow);
-          const dCol = Math.abs(col - gameState.selectedCol);
-          
-          if ((dRow === 1 && dCol === 1 && !gameState.board[row][col]) || 
-              (dRow === 2 && dCol === 2 && !gameState.board[row][col])) {
+          const moves = getValidMoves(gameState.selectedRow, gameState.selectedCol);
+          const moveData = moves.find(m => m[0] === row && m[1] === col);
+
+          if (moveData) {
+            const [nr, nc, isCapture] = moveData;
             gameState.board[row][col] = gameState.board[gameState.selectedRow][gameState.selectedCol];
             gameState.board[gameState.selectedRow][gameState.selectedCol] = null;
+
+            if (isCapture) {
+              const captureRow = Math.floor((gameState.selectedRow + row) / 2);
+              const captureCol = Math.floor((gameState.selectedCol + col) / 2);
+              gameState.board[captureRow][captureCol] = null;
+            }
+
+            if ((isPlayerPiece(gameState.board[row][col]) && row === 7) ||
+                (isAIPiece(gameState.board[row][col]) && row === 0)) {
+              gameState.board[row][col] += '♕';
+            }
+
             gameState.selectedRow = null;
             gameState.selectedCol = null;
             gameState.moves++;
-            
-            if (gameState.moves >= 8) {
-              resultDiv.innerHTML = '<strong style="color: green;">🎉 Отличный ход! +8 монет</strong>';
-              gameEngine.award(8, 6);
-              gameState.moves = 0;
-            }
+            gameState.isPlayerTurn = false;
+
+            waitingForAI = true;
+            setTimeout(() => {
+              const move = getAIMove();
+              if (move) {
+                const [r, c, nr, nc, isCapture] = move;
+                gameState.board[nr][nc] = gameState.board[r][c];
+                gameState.board[r][c] = null;
+
+                if (isCapture) {
+                  const captureRow = Math.floor((r + nr) / 2);
+                  const captureCol = Math.floor((c + nc) / 2);
+                  gameState.board[captureRow][captureCol] = null;
+                }
+
+                if ((isPlayerPiece(gameState.board[nr][nc]) && nr === 7) ||
+                    (isAIPiece(gameState.board[nr][nc]) && nr === 0)) {
+                  gameState.board[nr][nc] += '♕';
+                }
+
+                const playerHasPieces = gameState.board.some(row => 
+                  row.some(piece => isPlayerPiece(piece))
+                );
+
+                if (!playerHasPieces) {
+                  gameState.gameOver = true;
+                  resultDiv.innerHTML = '<strong style="color: red;">💔 Вы проиграли!</strong>';
+                }
+              }
+              gameState.isPlayerTurn = true;
+              waitingForAI = false;
+              renderBoard();
+            }, 500);
           } else {
             gameState.selectedRow = null;
             gameState.selectedCol = null;
@@ -746,6 +1251,27 @@
       btnNew.onclick = () => {
         gameState = initializeCheckers();
         resultDiv.innerHTML = '';
+        waitingForAI = false;
+        renderBoard();
+      };
+
+      difficultyBtn.onclick = () => {
+        if (difficulty === 'easy') {
+          difficulty = 'medium';
+          difficultyBtn.textContent = 'Средне';
+          statsDiv.textContent = 'Уровень: Средне';
+        } else if (difficulty === 'medium') {
+          difficulty = 'hard';
+          difficultyBtn.textContent = 'Сложно';
+          statsDiv.textContent = 'Уровень: Сложно';
+        } else {
+          difficulty = 'easy';
+          difficultyBtn.textContent = 'Легко';
+          statsDiv.textContent = 'Уровень: Легко';
+        }
+        gameState = initializeCheckers();
+        resultDiv.innerHTML = '';
+        waitingForAI = false;
         renderBoard();
       };
 
@@ -999,7 +1525,11 @@
         playerHits: Array(100).fill(null),
         aiHits: Array(100).fill(null),
         gameOver: false,
-        winner: null
+        winner: null,
+        isPlayerTurn: true,
+        aiHuntMode: false,
+        aiTargets: [],
+        aiLastHit: null
       };
 
       function generateBattleshipFleet() {
@@ -1078,6 +1608,34 @@
         return fleet;
       }
 
+      function getAIMove() {
+        if (gameState.aiHuntMode && gameState.aiTargets.length > 0) {
+          return gameState.aiTargets.shift();
+        }
+
+        let validMoves = [];
+        for (let i = 0; i < 100; i++) {
+          if (gameState.playerHits[i] === null) {
+            validMoves.push(i);
+          }
+        }
+
+        if (validMoves.length === 0) return null;
+
+        const pattern = [0, 2, 4, 6, 8, 1, 3, 5, 7, 9];
+        const checkered = [];
+        for (let r = 0; r < 10; r++) {
+          for (let c of pattern) {
+            if (r * 10 + c < 100 && gameState.playerHits[r * 10 + c] === null) {
+              checkered.push(r * 10 + c);
+            }
+          }
+        }
+
+        const movePool = checkered.length > 0 ? checkered : validMoves;
+        return movePool[Math.floor(Math.random() * movePool.length)];
+      }
+
       function renderBoards() {
         playerBoard.innerHTML = '';
         aiBoard.innerHTML = '';
@@ -1120,7 +1678,7 @@
           aiCell.style.display = 'flex';
           aiCell.style.alignItems = 'center';
           aiCell.style.justifyContent = 'center';
-          aiCell.style.cursor = gameState.gameOver ? 'default' : 'pointer';
+          aiCell.style.cursor = gameState.gameOver ? 'default' : (gameState.isPlayerTurn ? 'pointer' : 'default');
           aiCell.style.fontSize = '12px';
 
           if (gameState.aiHits[i] === 'hit') {
@@ -1131,7 +1689,7 @@
             aiCell.style.color = '#fff';
           }
 
-          aiCell.onclick = () => !gameState.gameOver && playerShoot(i);
+          aiCell.onclick = () => !gameState.gameOver && gameState.isPlayerTurn && playerShoot(i);
           aiBoard.appendChild(aiCell);
         }
       }
@@ -1146,7 +1704,7 @@
             ship.hits++;
             hit = true;
             if (ship.hits === ship.cells.length) {
-              statusDiv.textContent = '🎯 Корабль потоплен!';
+              statusDiv.textContent = '🎯 Корабль противника потоплен!';
             } else {
               statusDiv.textContent = '💥 Попадание!';
             }
@@ -1159,13 +1717,85 @@
           statusDiv.textContent = '💨 Промах!';
         }
 
-        const playerAlive = gameState.aiShips.some(ship => ship.hits < ship.cells.length);
-        if (!playerAlive) {
+        const aiAlive = gameState.aiShips.some(ship => ship.hits < ship.cells.length);
+        if (!aiAlive) {
           statusDiv.textContent = '🎉 Вы выиграли!';
           gameState.gameOver = true;
           gameEngine.award(20, 15);
+          renderBoards();
+          return;
         }
 
+        gameState.isPlayerTurn = false;
+        renderBoards();
+
+        setTimeout(() => {
+          aiShoot();
+        }, 600);
+      }
+
+      function aiShoot() {
+        const idx = getAIMove();
+        if (idx === null) {
+          gameState.gameOver = true;
+          statusDiv.textContent = '💔 Ваш флот потоплен! Вы проиграли!';
+          renderBoards();
+          return;
+        }
+
+        let hit = false;
+        for (let ship of gameState.playerShips) {
+          if (ship.cells.includes(idx)) {
+            gameState.playerHits[idx] = 'hit';
+            ship.hits++;
+            hit = true;
+
+            if (ship.hits === ship.cells.length) {
+              statusDiv.textContent = '💥 Робот потопил ваш корабль!';
+              gameState.aiHuntMode = false;
+              gameState.aiTargets = [];
+            } else {
+              statusDiv.textContent = '💥 Робот попал в ваш корабль!';
+              gameState.aiHuntMode = true;
+              gameState.aiLastHit = idx;
+
+              const row = Math.floor(idx / 10);
+              const col = idx % 10;
+              const neighbors = [
+                [row - 1, col],
+                [row + 1, col],
+                [row, col - 1],
+                [row, col + 1]
+              ];
+
+              for (let [r, c] of neighbors) {
+                if (r >= 0 && r < 10 && c >= 0 && c < 10) {
+                  const nIdx = r * 10 + c;
+                  if (gameState.playerHits[nIdx] === null) {
+                    gameState.aiTargets.push(nIdx);
+                  }
+                }
+              }
+            }
+            break;
+          }
+        }
+
+        if (!hit) {
+          statusDiv.textContent = '💨 Робот не попал!';
+          gameState.aiHuntMode = false;
+          gameState.aiTargets = [];
+        }
+
+        const playerAlive = gameState.playerShips.some(ship => ship.hits < ship.cells.length);
+        if (!playerAlive) {
+          statusDiv.textContent = '💔 Вы проиграли! Все ваши корабли потоплены!';
+          gameState.gameOver = true;
+          renderBoards();
+          return;
+        }
+
+        gameState.isPlayerTurn = true;
         renderBoards();
       }
 
