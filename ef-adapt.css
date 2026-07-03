@@ -490,3 +490,77 @@ body.colorful-theme .t3-board {
 .ef-game-panel::-webkit-scrollbar-thumb:hover {
   background:linear-gradient(135deg,#5568d3,#6b408f);
 }
+
+/* Game difficulty indicators */
+.difficulty-indicator {
+  font-size:12px;
+  padding:4px 8px;
+  border-radius:4px;
+  background:var(--header-gradient);
+  color:white;
+  font-weight:bold;
+  display:inline-block;
+  margin:5px 0;
+}
+
+/* AI status display */
+.ai-status {
+  font-size:11px;
+  color:var(--text-secondary);
+  margin-top:8px;
+  padding:8px;
+  background:var(--bg-secondary);
+  border-radius:6px;
+  text-align:center;
+}
+
+/* Game controls styling */
+.game-controls {
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-bottom:15px;
+  align-items:center;
+}
+
+.game-controls button {
+  flex:0 1 auto;
+  white-space:nowrap;
+}
+
+/* Result messages styling */
+.game-result {
+  padding:10px;
+  border-radius:8px;
+  text-align:center;
+  font-weight:bold;
+  margin:10px 0;
+  min-height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.game-result.win {
+  background:#d4edda;
+  color:#155724;
+  border:1px solid #c3e6cb;
+}
+
+.game-result.lose {
+  background:#f8d7da;
+  color:#721c24;
+  border:1px solid #f5c6cb;
+}
+
+.game-result.draw {
+  background:#d1ecf1;
+  color:#0c5460;
+  border:1px solid #bee5eb;
+}
+
+/* Loading state */
+.loading {
+  opacity:0.6;
+  pointer-events:none;
+}
