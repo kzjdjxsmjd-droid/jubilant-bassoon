@@ -86,7 +86,7 @@
         /* Main menu layout */
         .main-menu { background:var(--bg-secondary); padding:20px; min-height:calc(100vh - 60px) }
         .menu-grid { display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px }
-        .menu-tab { background:var(--bg-primary); border-radius:15px; padding:20px; cursor:pointer; transition:all .3s; box-shadow:0 4px 15px rgba(0,0,0,.1); border:2px solid transparent; display:flex; flex-direction:column; align-items:center; text-align:center }
+        .menu-tab { background:var(--bg-primary); border-radius:15px; padding:20px; cursor:pointer; transition:all .3s; box-shadow:0 4px 15px rgba(0,0,0,.1); border:2px solid transparent; display:flex; flex-direction:column; align-items:center; justify-content:center }
         .menu-tab:hover { transform:translateY(-5px); box-shadow:0 6px 20px rgba(0,0,0,.15) }
         .menu-tab.large { grid-column:span 2; flex-direction:row; gap:15px }
         .menu-tab.games-btn { background:linear-gradient(90deg, #ff0000, #ff7a00, #ffeb00, #00b050, #0074ff, #4b0082, #9a00ff); background-size:400% 400%; animation:gradient-shift 3s linear infinite }
@@ -102,7 +102,7 @@
         /* Shop */
         .shop-content { padding:20px }
         .shop-tabs { display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:10px }
-        .shop-tab { background:var(--bg-primary); border:2px solid var(--border-color); padding:10px 15px; border-radius:20px; cursor:pointer; white-space:nowrap; transition:all .3s; font-size:14px; font-weight:bold }
+        .shop-tab { background:var(--bg-primary); border:2px solid var(--border-color); padding:10px 15px; border-radius:20px; cursor:pointer; white-space:nowrap; transition:all .3s; font-size:14px }
         .shop-tab.active { background:var(--header-gradient); color:white; border-color:#667eea }
         .shop-items { display:grid; grid-template-columns:1fr; gap:15px }
         .shop-item { background:var(--bg-primary); padding:15px; border-radius:15px; display:flex; gap:15px; align-items:center; border:2px solid var(--border-color) }
@@ -175,7 +175,7 @@
         .reset-button:active { transform:scale(.98) }
         
         /* Edit profile button */
-        .edit-profile-btn { width:100%; padding:12px; background:#667eea; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; font-size:14px; transition:all .3s; margin-top:15px }
+        .edit-profile-btn { width:100%; padding:12px; background:#667eea; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; font-size:14px; transition:all .3s; margin-top:20px }
         .edit-profile-btn:hover { background:#5568d3; transform:translateY(-2px); box-shadow:0 4px 12px rgba(102, 126, 234, 0.3) }
         
         /* Responsive */
@@ -321,8 +321,8 @@
         <div style="background:var(--bg-primary); color:var(--text-primary); border-radius:20px;padding:30px;max-width:400px;width:100%;text-align:center">
             <div id="modalIcon" style="font-size:60px;margin-bottom:20px">🎉</div>
             <div id="modalTitle" style="font-size:24px;font-weight:bold;color:var(--text-primary);margin-bottom:10px">Заголовок</div>
-            <div id="modalText" style="font-size:14px;color:var(--text-secondary);margin-bottom:20px">Описание</div>
-            <button onclick="app.closeModal()" style="flex:1;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:bold;background:var(--header-gradient);color:white;cursor:pointer">ОК</button>
+            <div id="modalText" style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;white-space:pre-wrap">Описание</div>
+            <button onclick="app.closeModal()" style="flex:1;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:bold;background:var(--header-gradient);color:white;cursor:pointer;transition:all .3s">Закрыть</button>
         </div>
     </div>
 
